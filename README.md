@@ -46,12 +46,3 @@ Since the dataset is not included in this GitHub repo (due to file size constrai
 > **After downloading**, place `WELFake_Dataset.csv` in the project root directory.
 
 ---
-
-## 🔧 Setup Instructions
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/SakshiShelar11/Fake-News-Detector-ML.git
-
-cd Fake-News-Detector-ML
