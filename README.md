@@ -52,5 +52,6 @@ Since the dataset is not included in this GitHub repo (due to file size constrai
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/SakshiShelar11/Fake-News-Detector.git
-cd Fake-News-Detector
+git clone https://github.com/SakshiShelar11/Fake-News-Detector-ML.git
+
+cd Fake-News-Detector-ML
