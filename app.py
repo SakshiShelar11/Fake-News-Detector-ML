@@ -80,7 +80,6 @@ def train_model(df):
     vector = TfidfVectorizer(max_features=10000, ngram_range=(1,2))
     X = vector.fit_transform(X)
 
-    # stratify only if possible
     stratify = y_encoded if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2 else None
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -147,8 +146,8 @@ with tab1:
 with tab2:
     st.header("📊 Model Performance")
 
-    y_true = df['label']
-    y_pred = model.predict(vector.transform(df['content']))
+    y_true = df['label'].astype(int)
+    y_pred = model.predict(vector.transform(df['content'])).astype(int)
 
     st.subheader("📋 Classification Report")
     report = classification_report(
