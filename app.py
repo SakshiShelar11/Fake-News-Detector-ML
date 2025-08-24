@@ -61,34 +61,34 @@ def load_data():
 # ------------------- Train Model -------------------
 @st.cache_resource
 def train_model(df):
-   X = df["clean_text"]
-   y = df["label"]
+    X = df["content"]
+    y = df["label"]
 
-# Convert labels to numeric
-   le = LabelEncoder()
-   y_encoded = le.fit_transform(y)
+    # Convert labels to numeric
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y)
 
-   vector = TfidfVectorizer(max_features=5000)
-   X = vector.fit_transform(X)
+    vector = TfidfVectorizer(max_features=5000)
+    X = vector.fit_transform(X)
 
-   if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2:
-       stratify = y_encoded
-   else:
-       stratify = None
-       st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
+    if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2:
+        stratify = y_encoded
+    else:
+        stratify = None
+        st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
 
-   X_train, X_test, y_train, y_test = train_test_split(
-       X, y_encoded, test_size=0.2, stratify=stratify, random_state=42
-)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_encoded, test_size=0.2, stratify=stratify, random_state=42
+    )
 
-   model = LogisticRegression(max_iter=500, n_jobs=-1)
-   model.fit(X_train, y_train)
+    model = LogisticRegression(max_iter=500, n_jobs=-1)
+    model.fit(X_train, y_train)
 
-   return model, vector
+    return model, vector, le
 
 # Load
 df = load_data()
-model, vector = train_model(df)
+model, vector, label_encoder = train_model(df)
 
 # ------------------- Streamlit UI -------------------
 st.set_page_config(page_title="Fake News Detector", layout="wide")
@@ -176,5 +176,6 @@ with tab3:
                 st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
         except Exception as e:
             st.error(f"❌ Error processing uploaded file: {e}")
+
 
 
