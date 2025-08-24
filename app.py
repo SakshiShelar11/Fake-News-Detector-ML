@@ -146,26 +146,34 @@ with tab1:
 with tab2:
     st.header("📊 Model Performance")
 
-    y_true = df['label'].astype(int)
-    y_pred = model.predict(vector.transform(df['content'])).astype(int)
+    # True labels (strings)
+    y_true = df['label']
+
+    # Predictions (already numeric if model outputs 0/1)
+    y_pred = model.predict(vector.transform(df['content']))
+
+    # ✅ Encode both y_true and y_pred using the same label encoder
+    y_true_encoded = le.transform(y_true)  
+    y_pred_encoded = y_pred  # already numeric
 
     st.subheader("📋 Classification Report")
     report = classification_report(
-        y_true, y_pred,
-        target_names=['Real','Fake'],
-        output_dict=True,
-        zero_division=0
+        y_true_encoded, 
+        y_pred_encoded, 
+        target_names=le.classes_, 
+        zero_division=0,
+        output_dict=True
     )
     st.json(report)
 
     st.subheader("📉 Confusion Matrix")
-    cm = confusion_matrix(y_true, y_pred)
-    fig, ax = plt.subplots(figsize=(6,5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Real','Fake'], yticklabels=['Real','Fake'], ax=ax)
+    cm = confusion_matrix(y_true_encoded, y_pred_encoded)
+    fig, ax = plt.subplots()
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
+                xticklabels=le.classes_, yticklabels=le.classes_)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     st.pyplot(fig)
-
 # ------------------- Tab 3 -------------------
 with tab3:
     st.header("📁 Predict News from CSV")
