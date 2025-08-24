@@ -75,7 +75,7 @@ def train_model(df):
         stratify = y_encoded
     else:
         stratify = None
-        st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
+        #st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y_encoded, test_size=0.2, stratify=stratify, random_state=42
