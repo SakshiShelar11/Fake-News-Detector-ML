@@ -14,7 +14,6 @@ from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import LabelEncoder
 
 # ------------------- NLTK Setup -------------------
 nltk.download('stopwords', quiet=True)
@@ -64,30 +63,27 @@ def train_model(df):
     X = df["content"]
     y = df["label"]
 
-    # Convert labels to numeric
-    le = LabelEncoder()
-    y_encoded = le.fit_transform(y)
-
     vector = TfidfVectorizer(max_features=10000, ngram_range=(1,2))
     X = vector.fit_transform(X)
 
-    if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2:
-        stratify = y_encoded
+    # stratify check
+    if len(np.unique(y)) > 1 and min(np.bincount(y)) >= 2:
+        stratify = y
     else:
         stratify = None
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y_encoded, test_size=0.2, stratify=stratify, random_state=42
+        X, y, test_size=0.2, stratify=stratify, random_state=42
     )
 
-    model = LogisticRegression(max_iter=500, n_jobs=-1)
+    model = LogisticRegression(max_iter=500, solver="liblinear")  # fixed solver
     model.fit(X_train, y_train)
 
-    return model, vector, le
+    return model, vector
 
 # ------------------- Load Data and Model -------------------
 df = load_data()
-model, vector, le = train_model(df)
+model, vector = train_model(df)
 
 # ------------------- Streamlit UI -------------------
 st.set_page_config(page_title="Fake News Detector", layout="wide")
@@ -141,13 +137,13 @@ with tab2:
     y_pred = model.predict(vector.transform(df['content']))
 
     st.subheader("📋 Classification Report")
-    report = classification_report(y_true, y_pred, target_names=le.classes_.astype(str), output_dict=True)
+    report = classification_report(y_true, y_pred, target_names=["Real","Fake"], output_dict=True)
     st.json(report)
 
     st.subheader("📉 Confusion Matrix")
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(6,5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_, ax=ax)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Real","Fake"], yticklabels=["Real","Fake"], ax=ax)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     st.pyplot(fig)
