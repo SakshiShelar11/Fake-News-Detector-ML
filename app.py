@@ -1,180 +1,176 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import re
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
 import seaborn as sns
-import nltk
-import trafilatura
-import os
+import requests
+from bs4 import BeautifulSoup
 
-from sklearn.metrics import classification_report, confusion_matrix
-from nltk.corpus import stopwords
-from nltk.stem.porter import PorterStemmer
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-
-# ------------------- Streamlit Config -------------------
 st.set_page_config(page_title="Fake News Detector", layout="wide")
 
-# ------------------- NLTK Setup -------------------
-nltk.download('stopwords', quiet=True)
-STOPWORDS = set(stopwords.words('english'))
-ps = PorterStemmer()
+st.title("📰 Fake News Detection using Machine Learning")
 
-def stemming(content):
-    """Clean and stem text"""
-    content = re.sub('[^a-zA-Z]', " ", str(content))
-    content = content.lower()
-    words = content.split()
-    words = [ps.stem(word) for word in words if word not in STOPWORDS]
-    return " ".join(words)
-
-# ------------------- Load Data -------------------
+# -------------------------------
+# Load dataset
+# -------------------------------
 @st.cache_data
 def load_data():
-    dataset_path = "WELFake_Dataset.csv"
-    if os.path.exists(dataset_path):
-        try:
-            df = pd.read_csv(dataset_path)
-        except Exception as e:
-            st.error(f"❌ Error reading dataset: {e}")
-            df = pd.DataFrame({
-                "text": ["This is a real news article", "Breaking: Fake news spreads fast"],
-                "label": [0, 1]
-            })
-    else:
-        st.warning("⚠️ Dataset not found. Using sample data instead.")
-        df = pd.DataFrame({
-            "text": ["This is a real news article", "Breaking: Fake news spreads fast"],
-            "label": [0, 1]
-        })
-
-    df = df.fillna(" ")
-    df["content"] = df["text"].apply(stemming)
-
-    # keep limited rows for Streamlit Cloud performance
-    if len(df) > 5000:
-        df = df.sample(5000, random_state=42)
-
+    df = pd.read_csv("news.csv")  # Ensure file exists
     return df
 
-# ------------------- Train Model -------------------
+df = load_data()
+
+# -------------------------------
+# Train model
+# -------------------------------
 @st.cache_resource
 def train_model(df):
-    X = df["content"]
-    y = df["label"]
+    le = LabelEncoder()
+    y = le.fit_transform(df["label"].values)
 
-    vector = TfidfVectorizer(max_features=10000, ngram_range=(1,2))
-    X = vector.fit_transform(X)
+    # Convert y → numpy int array explicitly
+    y = np.array(y, dtype=int)
 
+    # Safety check: at least 2 samples per class
     if len(np.unique(y)) > 1 and min(np.bincount(y)) >= 2:
-        stratify = y
+        X_train, X_test, y_train, y_test = train_test_split(
+            df["text"].astype(str), y, test_size=0.2, random_state=42
+        )
+
+        vector = TfidfVectorizer(stop_words="english", max_features=5000)
+        X_train_vec = vector.fit_transform(X_train)
+        X_test_vec = vector.transform(X_test)
+
+        model = LogisticRegression(max_iter=500)
+        model.fit(X_train_vec, y_train)
+
+        y_pred = model.predict(X_test_vec)
+
+        # Classification report with string class names
+        report = classification_report(
+            y_test,
+            y_pred,
+            target_names=list(le.classes_.astype(str)),
+            output_dict=True
+        )
+
+        return model, vector, le, report
     else:
-        stratify = None
+        return None, None, None, None
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=stratify, random_state=42
-    )
 
-    model = LogisticRegression(max_iter=500)   # removed n_jobs
-    model.fit(X_train, y_train)
+model, vector, le, report = train_model(df)
 
-    return model, vector
+# -------------------------------
+# Tabs for navigation
+# -------------------------------
+tab1, tab2, tab3, tab4 = st.tabs([
+    "📊 Dataset",
+    "🤖 Model Performance",
+    "🔎 Predict Manually",
+    "🌐 Predict via URL / File"
+])
 
-# ------------------- Load Data and Model -------------------
-df = load_data()
-model, vector = train_model(df)
-
-# ------------------- Streamlit UI -------------------
-st.title("📰 Fake News Detection with ML")
-
-tab1, tab2, tab3 = st.tabs(["🔍 Predict News", "📊 Evaluate Model", "📁 Batch Prediction"])
-
-# ------------------- Tab 1 -------------------
+# -------------------------------
+# Tab 1: Dataset
+# -------------------------------
 with tab1:
-    st.header("Enter News Text or Paste a URL")
+    st.write("### Dataset Preview")
+    st.dataframe(df.head())
+    st.write(f"Dataset Shape: {df.shape}")
 
-    input_text = st.text_area("📝 Enter News Content Here", height=200)
-    url = st.text_input("🌐 Paste News URL")
-
-    if url:
-        try:
-            downloaded = trafilatura.fetch_url(url)
-            if downloaded:
-                extracted = trafilatura.extract(downloaded)
-                if extracted:
-                    st.success("✅ Article text extracted")
-                    input_text = extracted
-                else:
-                    st.error("❌ Could not extract text from this URL.")
-            else:
-                st.error("❌ Failed to fetch the URL.")
-        except Exception as e:
-            st.error(f"❌ Error fetching URL: {e}")
-
-    if input_text:
-        st.subheader("🧹 Cleaned Text Preview")
-        cleaned = stemming(input_text)
-        st.write(cleaned[:500] + "...")
-
-        input_vector = vector.transform([cleaned])
-        proba = model.predict_proba(input_vector)[0]
-        pred_class = np.argmax(proba)
-
-        st.subheader("📣 Prediction Result")
-        if max(proba) < 0.6:  # uncertain prediction
-            st.warning("⚠️ Model is uncertain about this news.")
-        elif pred_class == 1:
-            st.error("⚠️ The news is **Fake**.")
-        else:
-            st.success("✅ The news is **Real**.")
-
-        st.info(f"🧠 Model Confidence: Real: {round(proba[0]*100,2)}%, Fake: {round(proba[1]*100,2)}%")
-
-# ------------------- Tab 2 -------------------
+# -------------------------------
+# Tab 2: Model Performance
+# -------------------------------
 with tab2:
-    st.header("📊 Model Performance")
+    if model is not None:
+        st.success("✅ Model trained successfully!")
 
-    y_true = df['label']
-    y_pred = model.predict(vector.transform(df['content']))
+        st.write("### Classification Report")
+        st.json(report)
 
-    st.subheader("📋 Classification Report")
-    report = classification_report(y_true, y_pred, target_names=["Real","Fake"], output_dict=True)
-    st.json(report)
+        # Confusion Matrix
+        st.write("### Confusion Matrix")
+        y_true = le.transform(df["label"].values)
+        y_pred = model.predict(vector.transform(df["text"].astype(str)))
 
-    st.subheader("📉 Confusion Matrix")
-    cm = confusion_matrix(y_true, y_pred)
-    fig, ax = plt.subplots(figsize=(6,5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=["Real","Fake"], yticklabels=["Real","Fake"], ax=ax)
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("Actual")
-    st.pyplot(fig)
+        cm = confusion_matrix(y_true, y_pred)
+        fig, ax = plt.subplots()
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                    xticklabels=le.classes_,
+                    yticklabels=le.classes_,
+                    ax=ax)
+        plt.xlabel("Predicted")
+        plt.ylabel("Actual")
+        st.pyplot(fig)
+    else:
+        st.error("❌ Model training failed. Please check dataset.")
 
-# ------------------- Tab 3 -------------------
+# -------------------------------
+# Tab 3: Manual Prediction
+# -------------------------------
 with tab3:
-    st.header("📁 Predict News from CSV")
+    if model is not None:
+        st.write("### Enter News Text")
+        user_input = st.text_area("Enter news text to check if it's Fake or Real:")
 
-    uploaded_file = st.file_uploader("Upload a CSV with a 'text' column", type=['csv'])
-    if uploaded_file:
-        try:
-            user_df = pd.read_csv(uploaded_file)
+        if st.button("Predict", key="manual"):
+            if user_input.strip() != "":
+                vec_input = vector.transform([user_input])
+                prediction = model.predict(vec_input)[0]
+                pred_label = le.inverse_transform([prediction])[0]
 
-            if 'text' not in user_df.columns:
-                st.error("Uploaded CSV must contain a 'text' column.")
+                st.write(f"**Prediction:** {pred_label}")
             else:
-                user_df = user_df.fillna(" ")
-                user_df['content'] = user_df['text'].apply(stemming)
-                user_vector = vector.transform(user_df['content'])
-                proba = model.predict_proba(user_vector)
-                preds = np.argmax(proba, axis=1)
-                user_df['Prediction'] = ['Fake' if p==1 else 'Real' for p in preds]
+                st.warning("Please enter some text before predicting.")
+    else:
+        st.error("❌ Model not available.")
 
-                st.success("✅ Predictions completed")
-                st.dataframe(user_df[['text', 'Prediction']].head(50))
+# -------------------------------
+# Tab 4: URL / File Prediction
+# -------------------------------
+with tab4:
+    if model is not None:
+        st.write("### Predict from a URL")
+        url_input = st.text_input("Enter a news article URL:")
 
-                csv = user_df.to_csv(index=False).encode('utf-8')
-                st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
-        except Exception as e:
-            st.error(f"❌ Error processing uploaded file: {e}")
+        if st.button("Predict from URL"):
+            if url_input.strip():
+                try:
+                    response = requests.get(url_input, timeout=5)
+                    soup = BeautifulSoup(response.text, "html.parser")
+                    paragraphs = " ".join([p.get_text() for p in soup.find_all("p")])
+                    if paragraphs:
+                        vec_input = vector.transform([paragraphs])
+                        prediction = model.predict(vec_input)[0]
+                        pred_label = le.inverse_transform([prediction])[0]
+                        st.write(f"**Prediction for URL:** {pred_label}")
+                    else:
+                        st.warning("No text content found on this page.")
+                except Exception as e:
+                    st.error(f"Error fetching URL: {e}")
+
+        st.write("---")
+        st.write("### Predict from a File")
+        uploaded_file = st.file_uploader("Upload a CSV file with a 'text' column", type=["csv"])
+
+        if uploaded_file is not None:
+            try:
+                file_df = pd.read_csv(uploaded_file)
+                if "text" in file_df.columns:
+                    vec_input = vector.transform(file_df["text"].astype(str))
+                    predictions = model.predict(vec_input)
+                    file_df["prediction"] = le.inverse_transform(predictions)
+                    st.write("### Predictions on Uploaded File")
+                    st.dataframe(file_df)
+                else:
+                    st.error("Uploaded CSV must contain a 'text' column.")
+            except Exception as e:
+                st.error(f"Error processing file: {e}")
+    else:
+        st.error("❌ Model not available.")
