@@ -66,7 +66,6 @@ def train_model(df):
     vector = TfidfVectorizer(max_features=10000, ngram_range=(1,2))
     X = vector.fit_transform(X)
 
-    # stratify check
     if len(np.unique(y)) > 1 and min(np.bincount(y)) >= 2:
         stratify = y
     else:
@@ -76,7 +75,7 @@ def train_model(df):
         X, y, test_size=0.2, stratify=stratify, random_state=42
     )
 
-    model = LogisticRegression(max_iter=500, solver="liblinear")  # fixed solver
+    model = LogisticRegression(max_iter=500, n_jobs=-1)
     model.fit(X_train, y_train)
 
     return model, vector
@@ -174,3 +173,4 @@ with tab3:
                 st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
         except Exception as e:
             st.error(f"❌ Error processing uploaded file: {e}")
+
