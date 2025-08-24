@@ -66,8 +66,14 @@ def train_model(df):
     vector = TfidfVectorizer(max_features=5000)  # limit features
     X = vector.fit_transform(X)
 
+    if len(np.unique(y)) > 1 and min(np.bincount(y)) >= 2:
+        stratify = y
+    else:
+        stratify = None
+        st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
+
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
+        X, y, test_size=0.2, stratify=stratify, random_state=42
     )
 
     model = LogisticRegression(max_iter=500, n_jobs=-1)
