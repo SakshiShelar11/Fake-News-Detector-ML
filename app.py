@@ -14,6 +14,7 @@ from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import LabelEncoder
 
 # ------------------- NLTK Setup -------------------
 nltk.download('stopwords', quiet=True)
@@ -60,26 +61,30 @@ def load_data():
 # ------------------- Train Model -------------------
 @st.cache_resource
 def train_model(df):
-    X = df['content'].values
-    y = df['label'].values
+   X = df["clean_text"]
+   y = df["label"]
 
-    vector = TfidfVectorizer(max_features=5000)  # limit features
-    X = vector.fit_transform(X)
+# Convert labels to numeric
+   le = LabelEncoder()
+   y_encoded = le.fit_transform(y)
 
-    if len(np.unique(y)) > 1 and min(np.bincount(y)) >= 2:
-        stratify = y
-    else:
-        stratify = None
-        st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
+   vector = TfidfVectorizer(max_features=5000)
+   X = vector.fit_transform(X)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=stratify, random_state=42
-    )
+   if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2:
+       stratify = y_encoded
+   else:
+       stratify = None
+       st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
 
-    model = LogisticRegression(max_iter=500, n_jobs=-1)
-    model.fit(X_train, y_train)
+   X_train, X_test, y_train, y_test = train_test_split(
+       X, y_encoded, test_size=0.2, stratify=stratify, random_state=42
+)
 
-    return model, vector
+   model = LogisticRegression(max_iter=500, n_jobs=-1)
+   model.fit(X_train, y_train)
+
+   return model, vector
 
 # Load
 df = load_data()
