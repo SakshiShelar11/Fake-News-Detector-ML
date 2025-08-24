@@ -2,77 +2,82 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import re
-import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
+import nltk
+import trafilatura
+
 from sklearn.metrics import classification_report, confusion_matrix
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-import trafilatura
-import nltk
 
-# Download NLTK stopwords if not already downloaded
-nltk.download('stopwords')
-
-# Preprocessing
+# ------------------- NLTK Setup -------------------
+nltk.download('stopwords', quiet=True)
 ps = PorterStemmer()
 
 def stemming(content):
+    """Clean and stem text"""
     content = re.sub('[^a-zA-Z]', " ", str(content))
     content = content.lower()
     words = content.split()
     words = [ps.stem(word) for word in words if word not in stopwords.words('english')]
     return " ".join(words)
 
-# Cache data loading
+# ------------------- Load Data -------------------
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv('WELFake_Dataset.csv')   # Make sure this file is in GitHub repo
+        df = pd.read_csv("WELFake_Dataset.csv")  # file must be in repo
     except FileNotFoundError:
-        st.warning("⚠️ Dataset not found in repo. Using sample data instead.")
+        st.warning("⚠️ Dataset not found. Using sample data instead.")
         df = pd.DataFrame({
             "text": ["This is a real news article", "Breaking: Fake news spreads fast"],
             "label": [0, 1]
         })
 
-    df = df.fillna(' ')
-    df['content'] = df['text']
-    df = df.head(2000)  # limit rows to avoid heavy training
-    df['content'] = df['content'].apply(stemming)
+    df = df.fillna(" ")
+    df["content"] = df["text"].apply(stemming)
+
+    # keep limited rows for Streamlit performance
+    if len(df) > 3000:
+        df = df.sample(3000, random_state=42)
+
     return df
 
-# Cache model training
+# ------------------- Train Model -------------------
 @st.cache_resource
 def train_model(df):
     X = df['content'].values
     y = df['label'].values
+
     vector = TfidfVectorizer()
     X = vector.fit_transform(X)
-    X_train, X_test, Y_train, Y_test = train_test_split(
+
+    X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
     )
+
     model = LogisticRegression(max_iter=500)
-    model.fit(X_train, Y_train)
-    return model, vector, X_test, Y_test
+    model.fit(X_train, y_train)
 
-# Load data and model
+    return model, vector
+
+# Load
 df = load_data()
-model, vector, X_test, Y_test = train_model(df)
+model, vector = train_model(df)
 
-# ----------- UI ------------
+# ------------------- Streamlit UI -------------------
 st.set_page_config(page_title="Fake News Detector", layout="wide")
 st.title("📰 Fake News Detection with ML")
 
-# --- Tabs
 tab1, tab2, tab3 = st.tabs(["🔍 Predict News", "📊 Evaluate Model", "📁 Batch Prediction"])
 
-# --- Tab 1: Single News Prediction ---
+# ------------------- Tab 1 -------------------
 with tab1:
-    st.header("Enter News Manually or Paste URL")
+    st.header("Enter News Text or Paste a URL")
 
     input_text = st.text_area("📝 Enter News Content Here", height=200)
     url = st.text_input("🌐 Paste News URL")
@@ -80,19 +85,19 @@ with tab1:
     if url:
         downloaded = trafilatura.fetch_url(url)
         if downloaded:
-            input_text = trafilatura.extract(downloaded)
-            if input_text:
-                st.success("✅ Article text extracted.")
-                st.text_area("Extracted Article", input_text[:1000], height=200)
+            extracted = trafilatura.extract(downloaded)
+            if extracted:
+                st.success("✅ Article text extracted")
+                input_text = extracted
             else:
                 st.error("❌ Could not extract text from this URL.")
         else:
-            st.error("❌ Failed to fetch the URL. Try another one.")
+            st.error("❌ Failed to fetch the URL.")
 
     if input_text:
         st.subheader("🧹 Cleaned Text Preview")
         cleaned = stemming(input_text)
-        st.write(cleaned)
+        st.write(cleaned[:500] + "...")
 
         input_vector = vector.transform([cleaned])
         pred = model.predict(input_vector)[0]
@@ -106,7 +111,7 @@ with tab1:
 
         st.info(f"🧠 Model Confidence: {round(max(proba) * 100, 2)}%")
 
-# --- Tab 2: Model Evaluation ---
+# ------------------- Tab 2 -------------------
 with tab2:
     st.header("📊 Model Performance")
 
@@ -125,26 +130,26 @@ with tab2:
     ax.set_ylabel("Actual")
     st.pyplot(fig)
 
-# --- Tab 3: Batch Prediction via CSV Upload ---
+# ------------------- Tab 3 -------------------
 with tab3:
     st.header("📁 Predict News from CSV")
 
-    uploaded_file = st.file_uploader("Upload a CSV file with a 'text' column", type=['csv'])
-    if uploaded_file is not None:
+    uploaded_file = st.file_uploader("Upload a CSV with a 'text' column", type=['csv'])
+    if uploaded_file:
         user_df = pd.read_csv(uploaded_file)
 
         if 'text' not in user_df.columns:
             st.error("Uploaded CSV must contain a 'text' column.")
         else:
-            user_df = user_df.fillna(' ')
+            user_df = user_df.fillna(" ")
             user_df['content'] = user_df['text'].apply(stemming)
             user_vector = vector.transform(user_df['content'])
             user_df['Prediction'] = model.predict(user_vector)
             user_df['Prediction'] = user_df['Prediction'].apply(lambda x: 'Fake' if x == 1 else 'Real')
-            st.success("✅ Predictions completed.")
+
+            st.success("✅ Predictions completed")
             st.dataframe(user_df[['text', 'Prediction']])
 
             csv = user_df.to_csv(index=False).encode('utf-8')
             st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
-
 
