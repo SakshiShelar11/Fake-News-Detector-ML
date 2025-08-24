@@ -139,12 +139,17 @@ with tab2:
     y_true = df['label']
     y_pred = model.predict(vector.transform(df['content']))
 
+    # ✅ Ensure numeric labels for classification_report
+    le_eval = LabelEncoder()
+    y_true_encoded = le_eval.fit_transform(y_true)
+    y_pred_encoded = le_eval.transform(y_pred)
+
     st.subheader("📋 Classification Report")
-    report = classification_report(y_true, y_pred, output_dict=True)
+    report = classification_report(y_true_encoded, y_pred_encoded, output_dict=True)
     st.json(report)
 
     st.subheader("📉 Confusion Matrix")
-    cm = confusion_matrix(y_true, y_pred)
+    cm = confusion_matrix(y_true_encoded, y_pred_encoded)
     fig, ax = plt.subplots()
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
     ax.set_xlabel("Predicted")
