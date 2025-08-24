@@ -68,14 +68,13 @@ def train_model(df):
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
 
-    vector = TfidfVectorizer(max_features=5000)
+    vector = TfidfVectorizer(max_features=10000, ngram_range=(1,2))
     X = vector.fit_transform(X)
 
     if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2:
         stratify = y_encoded
     else:
         stratify = None
-        st.warning("⚠️ Not enough samples for stratified split. Proceeding without stratification.")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y_encoded, test_size=0.2, stratify=stratify, random_state=42
@@ -86,7 +85,7 @@ def train_model(df):
 
     return model, vector, le
 
-# Load
+# ------------------- Load Data and Model -------------------
 df = load_data()
 model, vector, le = train_model(df)
 
@@ -121,16 +120,18 @@ with tab1:
         st.write(cleaned[:500] + "...")
 
         input_vector = vector.transform([cleaned])
-        pred = model.predict(input_vector)[0]
         proba = model.predict_proba(input_vector)[0]
+        pred_class = np.argmax(proba)
 
         st.subheader("📣 Prediction Result")
-        if pred == 1:
+        if max(proba) < 0.6:  # uncertain prediction
+            st.warning("⚠️ Model is uncertain about this news.")
+        elif pred_class == 1:
             st.error("⚠️ The news is **Fake**.")
         else:
             st.success("✅ The news is **Real**.")
 
-        st.info(f"🧠 Model Confidence: {round(max(proba) * 100, 2)}%")
+        st.info(f"🧠 Model Confidence: Real: {round(proba[0]*100,2)}%, Fake: {round(proba[1]*100,2)}%")
 
 # ------------------- Tab 2 -------------------
 with tab2:
@@ -139,18 +140,14 @@ with tab2:
     y_true = df['label']
     y_pred = model.predict(vector.transform(df['content']))
 
-    # ✅ Use the same LabelEncoder from training
-    y_true_encoded = le.transform(y_true)
-    y_pred_encoded = y_pred  # model.predict already numeric
-
     st.subheader("📋 Classification Report")
-    report = classification_report(y_true_encoded, y_pred_encoded, output_dict=True)
+    report = classification_report(y_true, y_pred, target_names=le.classes_.astype(str), output_dict=True)
     st.json(report)
 
     st.subheader("📉 Confusion Matrix")
-    cm = confusion_matrix(y_true_encoded, y_pred_encoded)
-    fig, ax = plt.subplots()
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax)
+    cm = confusion_matrix(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(6,5))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_, ax=ax)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     st.pyplot(fig)
@@ -170,8 +167,9 @@ with tab3:
                 user_df = user_df.fillna(" ")
                 user_df['content'] = user_df['text'].apply(stemming)
                 user_vector = vector.transform(user_df['content'])
-                user_df['Prediction'] = model.predict(user_vector)
-                user_df['Prediction'] = user_df['Prediction'].apply(lambda x: 'Fake' if x == 1 else 'Real')
+                proba = model.predict_proba(user_vector)
+                preds = np.argmax(proba, axis=1)
+                user_df['Prediction'] = ['Fake' if p==1 else 'Real' for p in preds]
 
                 st.success("✅ Predictions completed")
                 st.dataframe(user_df[['text', 'Prediction']].head(50))
