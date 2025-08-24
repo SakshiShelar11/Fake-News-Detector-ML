@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import nltk
 import trafilatura
+import os
 
 from sklearn.metrics import classification_report, confusion_matrix
 from nltk.corpus import stopwords
@@ -16,6 +17,7 @@ from sklearn.linear_model import LogisticRegression
 
 # ------------------- NLTK Setup -------------------
 nltk.download('stopwords', quiet=True)
+STOPWORDS = set(stopwords.words('english'))
 ps = PorterStemmer()
 
 def stemming(content):
@@ -23,15 +25,23 @@ def stemming(content):
     content = re.sub('[^a-zA-Z]', " ", str(content))
     content = content.lower()
     words = content.split()
-    words = [ps.stem(word) for word in words if word not in stopwords.words('english')]
+    words = [ps.stem(word) for word in words if word not in STOPWORDS]
     return " ".join(words)
 
 # ------------------- Load Data -------------------
 @st.cache_data
 def load_data():
-    try:
-        df = pd.read_csv("WELFake_Dataset.csv")  # file must be in repo
-    except FileNotFoundError:
+    dataset_path = "WELFake_Dataset.csv"
+    if os.path.exists(dataset_path):
+        try:
+            df = pd.read_csv(dataset_path)
+        except Exception as e:
+            st.error(f"❌ Error reading dataset: {e}")
+            df = pd.DataFrame({
+                "text": ["This is a real news article", "Breaking: Fake news spreads fast"],
+                "label": [0, 1]
+            })
+    else:
         st.warning("⚠️ Dataset not found. Using sample data instead.")
         df = pd.DataFrame({
             "text": ["This is a real news article", "Breaking: Fake news spreads fast"],
@@ -41,9 +51,9 @@ def load_data():
     df = df.fillna(" ")
     df["content"] = df["text"].apply(stemming)
 
-    # keep limited rows for Streamlit performance
-    if len(df) > 3000:
-        df = df.sample(3000, random_state=42)
+    # keep limited rows for Streamlit Cloud performance
+    if len(df) > 5000:
+        df = df.sample(5000, random_state=42)
 
     return df
 
@@ -53,14 +63,14 @@ def train_model(df):
     X = df['content'].values
     y = df['label'].values
 
-    vector = TfidfVectorizer()
+    vector = TfidfVectorizer(max_features=5000)  # limit features
     X = vector.fit_transform(X)
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
     )
 
-    model = LogisticRegression(max_iter=500)
+    model = LogisticRegression(max_iter=500, n_jobs=-1)
     model.fit(X_train, y_train)
 
     return model, vector
@@ -136,20 +146,24 @@ with tab3:
 
     uploaded_file = st.file_uploader("Upload a CSV with a 'text' column", type=['csv'])
     if uploaded_file:
-        user_df = pd.read_csv(uploaded_file)
+        try:
+            user_df = pd.read_csv(uploaded_file)
 
-        if 'text' not in user_df.columns:
-            st.error("Uploaded CSV must contain a 'text' column.")
-        else:
-            user_df = user_df.fillna(" ")
-            user_df['content'] = user_df['text'].apply(stemming)
-            user_vector = vector.transform(user_df['content'])
-            user_df['Prediction'] = model.predict(user_vector)
-            user_df['Prediction'] = user_df['Prediction'].apply(lambda x: 'Fake' if x == 1 else 'Real')
+            if 'text' not in user_df.columns:
+                st.error("Uploaded CSV must contain a 'text' column.")
+            else:
+                user_df = user_df.fillna(" ")
+                user_df['content'] = user_df['text'].apply(stemming)
+                user_vector = vector.transform(user_df['content'])
+                user_df['Prediction'] = model.predict(user_vector)
+                user_df['Prediction'] = user_df['Prediction'].apply(lambda x: 'Fake' if x == 1 else 'Real')
 
-            st.success("✅ Predictions completed")
-            st.dataframe(user_df[['text', 'Prediction']])
+                st.success("✅ Predictions completed")
+                st.dataframe(user_df[['text', 'Prediction']].head(50))  # show only first 50 for performance
 
-            csv = user_df.to_csv(index=False).encode('utf-8')
-            st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
+                csv = user_df.to_csv(index=False).encode('utf-8')
+                st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
+        except Exception as e:
+            st.error(f"❌ Error processing uploaded file: {e}")
+
 
