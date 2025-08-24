@@ -52,7 +52,6 @@ def load_data():
     df = df.fillna(" ")
     df["content"] = df["text"].apply(stemming)
 
-    # limit rows for performance
     if len(df) > 5000:
         df = df.sample(5000, random_state=42)
 
@@ -111,9 +110,12 @@ with tab1:
             st.error("❌ Failed to fetch the URL.")
 
     if input_text:
-        st.subheader("🧹 Cleaned Text Preview")
         cleaned = stemming(input_text)
+        st.subheader("🧹 Cleaned Text Preview")
         st.write(cleaned[:500] + "...")
+
+        if len(cleaned.split()) < 3:
+            st.warning("⚠️ Input text is too short or meaningless. Prediction may be unreliable.")
 
         input_vector = vector.transform([cleaned])
         proba = model.predict_proba(input_vector)[0]
@@ -148,8 +150,7 @@ with tab2:
     st.subheader("📉 Confusion Matrix")
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(6,5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                xticklabels=le.classes_, yticklabels=le.classes_, ax=ax)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_, ax=ax)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     st.pyplot(fig)
@@ -180,4 +181,3 @@ with tab3:
                 st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
         except Exception as e:
             st.error(f"❌ Error processing uploaded file: {e}")
-
