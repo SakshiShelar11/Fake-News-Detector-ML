@@ -52,7 +52,7 @@ def load_data():
     df = df.fillna(" ")
     df["content"] = df["text"].apply(stemming)
 
-    # keep limited rows for Streamlit Cloud performance
+    # limit rows for performance
     if len(df) > 5000:
         df = df.sample(5000, random_state=42)
 
@@ -64,23 +64,19 @@ def train_model(df):
     X = df["content"]
     y = df["label"]
 
-    # Convert labels to numeric
     le = LabelEncoder()
     y_encoded = le.fit_transform(y)
 
     vector = TfidfVectorizer(max_features=10000, ngram_range=(1,2))
     X = vector.fit_transform(X)
 
-    if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2:
-        stratify = y_encoded
-    else:
-        stratify = None
+    stratify = y_encoded if len(np.unique(y_encoded)) > 1 and min(np.bincount(y_encoded)) >= 2 else None
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y_encoded, test_size=0.2, stratify=stratify, random_state=42
     )
 
-    model = LogisticRegression(max_iter=500, n_jobs=-1)
+    model = LogisticRegression(max_iter=500, n_jobs=-1, class_weight='balanced')
     model.fit(X_train, y_train)
 
     return model, vector, le
@@ -124,7 +120,7 @@ with tab1:
         pred_class = np.argmax(proba)
 
         st.subheader("📣 Prediction Result")
-        if max(proba) < 0.6:  # uncertain prediction
+        if max(proba) < 0.6:
             st.warning("⚠️ Model is uncertain about this news.")
         elif pred_class == 1:
             st.error("⚠️ The news is **Fake**.")
@@ -141,13 +137,19 @@ with tab2:
     y_pred = model.predict(vector.transform(df['content']))
 
     st.subheader("📋 Classification Report")
-    report = classification_report(y_true, y_pred, target_names=le.classes_.astype(str), output_dict=True)
+    report = classification_report(
+        y_true, y_pred,
+        target_names=le.classes_.astype(str),
+        output_dict=True,
+        zero_division=0
+    )
     st.json(report)
 
     st.subheader("📉 Confusion Matrix")
     cm = confusion_matrix(y_true, y_pred)
     fig, ax = plt.subplots(figsize=(6,5))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_, ax=ax)
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=le.classes_, yticklabels=le.classes_, ax=ax)
     ax.set_xlabel("Predicted")
     ax.set_ylabel("Actual")
     st.pyplot(fig)
@@ -178,3 +180,4 @@ with tab3:
                 st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
         except Exception as e:
             st.error(f"❌ Error processing uploaded file: {e}")
+
