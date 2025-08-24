@@ -139,10 +139,9 @@ with tab2:
     y_true = df['label']
     y_pred = model.predict(vector.transform(df['content']))
 
-    # ✅ Ensure numeric labels for classification_report
-    le_eval = LabelEncoder()
-    y_true_encoded = le_eval.fit_transform(y_true)
-    y_pred_encoded = le_eval.transform(y_pred)
+    # ✅ Use the same LabelEncoder from training
+    y_true_encoded = le.transform(y_true)
+    y_pred_encoded = y_pred  # model.predict already numeric
 
     st.subheader("📋 Classification Report")
     report = classification_report(y_true_encoded, y_pred_encoded, output_dict=True)
@@ -175,12 +174,13 @@ with tab3:
                 user_df['Prediction'] = user_df['Prediction'].apply(lambda x: 'Fake' if x == 1 else 'Real')
 
                 st.success("✅ Predictions completed")
-                st.dataframe(user_df[['text', 'Prediction']].head(50))  # show only first 50 for performance
+                st.dataframe(user_df[['text', 'Prediction']].head(50))
 
                 csv = user_df.to_csv(index=False).encode('utf-8')
                 st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
         except Exception as e:
             st.error(f"❌ Error processing uploaded file: {e}")
+
 
 
 
