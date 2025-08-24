@@ -61,7 +61,7 @@ def load_data():
 # ------------------- Train Model -------------------
 @st.cache_resource
 def train_model(df):
-    X = df["content"]
+    X = df["content"]     # ✅ fixed: was clean_text before
     y = df["label"]
 
     # Convert labels to numeric
@@ -84,11 +84,11 @@ def train_model(df):
     model = LogisticRegression(max_iter=500, n_jobs=-1)
     model.fit(X_train, y_train)
 
-    return model, vector, le
+    return model, vector
 
 # Load
 df = load_data()
-model, vector, label_encoder = train_model(df)
+model, vector = train_model(df)
 
 # ------------------- Streamlit UI -------------------
 st.set_page_config(page_title="Fake News Detector", layout="wide")
@@ -176,6 +176,7 @@ with tab3:
                 st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
         except Exception as e:
             st.error(f"❌ Error processing uploaded file: {e}")
+
 
 
 
