@@ -6,4 +6,3 @@ nltk
 matplotlib
 seaborn
 trafilatura
-beautifulsoup4
