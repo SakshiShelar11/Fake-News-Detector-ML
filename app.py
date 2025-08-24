@@ -11,18 +11,17 @@ from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
-from newspaper import Article
 import trafilatura
+import nltk
 
 # Download NLTK stopwords if not already downloaded
-import nltk
 nltk.download('stopwords')
 
 # Preprocessing
 ps = PorterStemmer()
 
 def stemming(content):
-    content = re.sub('[^a-zA-Z]', " ", content)
+    content = re.sub('[^a-zA-Z]', " ", str(content))
     content = content.lower()
     words = content.split()
     words = [ps.stem(word) for word in words if word not in stopwords.words('english')]
@@ -31,10 +30,18 @@ def stemming(content):
 # Cache data loading
 @st.cache_data
 def load_data():
-    df = pd.read_csv('WELFake_Dataset.csv')
+    try:
+        df = pd.read_csv('WELFake_Dataset.csv')   # Make sure this file is in GitHub repo
+    except FileNotFoundError:
+        st.warning("⚠️ Dataset not found in repo. Using sample data instead.")
+        df = pd.DataFrame({
+            "text": ["This is a real news article", "Breaking: Fake news spreads fast"],
+            "label": [0, 1]
+        })
+
     df = df.fillna(' ')
     df['content'] = df['text']
-    df = df.head(500)  # reduce for faster testing
+    df = df.head(2000)  # limit rows to avoid heavy training
     df['content'] = df['content'].apply(stemming)
     return df
 
@@ -45,8 +52,10 @@ def train_model(df):
     y = df['label'].values
     vector = TfidfVectorizer()
     X = vector.fit_transform(X)
-    X_train, X_test, Y_train, Y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
-    model = LogisticRegression()
+    X_train, X_test, Y_train, Y_test = train_test_split(
+        X, y, test_size=0.2, stratify=y, random_state=42
+    )
+    model = LogisticRegression(max_iter=500)
     model.fit(X_train, Y_train)
     return model, vector, X_test, Y_test
 
@@ -66,16 +75,19 @@ with tab1:
     st.header("Enter News Manually or Paste URL")
 
     input_text = st.text_area("📝 Enter News Content Here", height=200)
-
     url = st.text_input("🌐 Paste News URL")
-if url:
-    downloaded = trafilatura.fetch_url(url)
-    if downloaded:
-        input_text = trafilatura.extract(downloaded)
-        st.success("✅ Article text extracted.")
-        st.text_area("Extracted Article", input_text, height=200)
-    else:
-        st.error("❌ Failed to extract article. Try a different site.")
+
+    if url:
+        downloaded = trafilatura.fetch_url(url)
+        if downloaded:
+            input_text = trafilatura.extract(downloaded)
+            if input_text:
+                st.success("✅ Article text extracted.")
+                st.text_area("Extracted Article", input_text[:1000], height=200)
+            else:
+                st.error("❌ Could not extract text from this URL.")
+        else:
+            st.error("❌ Failed to fetch the URL. Try another one.")
 
     if input_text:
         st.subheader("🧹 Cleaned Text Preview")
@@ -134,4 +146,5 @@ with tab3:
 
             csv = user_df.to_csv(index=False).encode('utf-8')
             st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
+
 
