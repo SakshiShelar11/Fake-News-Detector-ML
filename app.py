@@ -15,6 +15,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 
+# ------------------- Streamlit Config -------------------
+st.set_page_config(page_title="Fake News Detector", layout="wide")
+
 # ------------------- NLTK Setup -------------------
 nltk.download('stopwords', quiet=True)
 STOPWORDS = set(stopwords.words('english'))
@@ -75,7 +78,7 @@ def train_model(df):
         X, y, test_size=0.2, stratify=stratify, random_state=42
     )
 
-    model = LogisticRegression(max_iter=500, n_jobs=-1)
+    model = LogisticRegression(max_iter=500)   # removed n_jobs
     model.fit(X_train, y_train)
 
     return model, vector
@@ -85,7 +88,6 @@ df = load_data()
 model, vector = train_model(df)
 
 # ------------------- Streamlit UI -------------------
-st.set_page_config(page_title="Fake News Detector", layout="wide")
 st.title("📰 Fake News Detection with ML")
 
 tab1, tab2, tab3 = st.tabs(["🔍 Predict News", "📊 Evaluate Model", "📁 Batch Prediction"])
@@ -98,16 +100,19 @@ with tab1:
     url = st.text_input("🌐 Paste News URL")
 
     if url:
-        downloaded = trafilatura.fetch_url(url)
-        if downloaded:
-            extracted = trafilatura.extract(downloaded)
-            if extracted:
-                st.success("✅ Article text extracted")
-                input_text = extracted
+        try:
+            downloaded = trafilatura.fetch_url(url)
+            if downloaded:
+                extracted = trafilatura.extract(downloaded)
+                if extracted:
+                    st.success("✅ Article text extracted")
+                    input_text = extracted
+                else:
+                    st.error("❌ Could not extract text from this URL.")
             else:
-                st.error("❌ Could not extract text from this URL.")
-        else:
-            st.error("❌ Failed to fetch the URL.")
+                st.error("❌ Failed to fetch the URL.")
+        except Exception as e:
+            st.error(f"❌ Error fetching URL: {e}")
 
     if input_text:
         st.subheader("🧹 Cleaned Text Preview")
@@ -173,4 +178,3 @@ with tab3:
                 st.download_button("⬇️ Download Results CSV", csv, "predicted_news.csv", "text/csv")
         except Exception as e:
             st.error(f"❌ Error processing uploaded file: {e}")
-
